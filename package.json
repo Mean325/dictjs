@@ -1,0 +1,33 @@
+{
+  "name": "enumjs",
+  "version": "1.0.0",
+  "description": "枚举管理工具",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mean325/enumjs.git"
+  },
+  "browser": "dist/index.js",
+  "keywords": [
+    "enum",
+    "rollup",
+    "typescript"
+  ],
+  "author": "Mean",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Mean325/enumjs/issues"
+  },
+  "homepage": "https://github.com/Mean325/enumjs#readme",
+  "devDependencies": {
+    "rollup": "^2.52.4",
+    "rollup-plugin-commonjs": "^10.1.0",
+    "rollup-plugin-node-resolve": "^5.2.0",
+    "rollup-plugin-typescript": "^1.0.1",
+    "tslib": "^2.3.0",
+    "typescript": "^4.3.5"
+  }
+}
