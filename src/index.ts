@@ -1,3 +1,3 @@
-import isColor from "./isColor";
+import Enum from "./enum";
 
-export { isColor };
+export { Enum };
