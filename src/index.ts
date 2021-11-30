@@ -1,3 +1,3 @@
-import Enum from "./enum";
+import Enum from "./dict";
 
 export { Enum };
