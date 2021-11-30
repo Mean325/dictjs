@@ -8,7 +8,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Mean325/enumjs.git"
+    "url": "git+https://github.com/Mean325/js.git"
   },
   "browser": "dist/index.js",
   "keywords": [
@@ -19,9 +19,9 @@
   "author": "Mean",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/Mean325/enumjs/issues"
+    "url": "https://github.com/Mean325/js/issues"
   },
-  "homepage": "https://github.com/Mean325/enumjs#readme",
+  "homepage": "https://github.com/Mean325/js#readme",
   "devDependencies": {
     "rollup": "^2.52.4",
     "rollup-plugin-commonjs": "^10.1.0",
