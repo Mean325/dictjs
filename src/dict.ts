@@ -1,13 +1,15 @@
 import { DictItem } from "./dictItem";
 
 interface Dict {
-  size: number; // 字典数量
-  dicts: DictItem[];
-  _options: Option; // 选项
-  _source: Source; // 源数据
-  _sourceSize: number; // 源数据
-  getLowerCaseDicts: any;
-  [key: string]: DictItem | DictItem[] | Option | Source | number | Function;
+  dicts: object;
+  _size: number; // 字典数量
+  // dicts: DictItem[];
+  _options: Option; // 字典配置信息
+  _source: Source | object; // 源数据
+  _sourceOptions: Source; // 源数据选项模式
+  _sourceSize: number; // 源数据长度
+  getLowerCaseDicts: Function;
+  [key: string]: DictItem | DictItem[] | Option | Source | number | string | object | Function;
 }
 
 interface Option {
@@ -26,28 +28,28 @@ interface Option {
   // filter: () => boolean; // 过滤方式
 }
 
-type Source = labelValue[] | string[];
+type Source = LabelValue[];
 
-interface labelValue {
+interface LabelValue {
   label: string;
   value: number | string;
 }
 
 /**
- * 带有子项的枚举
- * @param { Array || Object }  source 枚举数据
+ * 带有子项的字典
+ * @param { Array || Object }  source 字典数据
  * @param { Object } options 配置
  */
 class Dict implements Dict {
-  constructor(source: Source, options: Option) {
+  constructor(source: Source | object, options: Option) {
     // TODO: 数量
-    this.size = 4;
+    this._size = 4;
 
     // 获取配置信息
     this._options = options || {};
     this._options.ignoreCase = this._options.ignoreCase || false;
-    this._options.freeze = this._options.freeze || false;
-    this._options.strict = this._options.strict || false;
+    this._options.freeze = this._options.freeze || true;
+    this._options.strict = this._options.strict || true;
     // this._options.filter = this._options.filter || null;
     this._options.input = this._options.input || {
       label: "label",
@@ -60,39 +62,58 @@ class Dict implements Dict {
 
     this.dicts = [];
 
-    // 如果传入的数据为数组, 转化为源数据
-    if (Array.isArray(source)) {
-      // source = transMapToSource(source);
-    }
-
-    const sourceKeys = Object.keys(source);
-    // 获取源数据的长度
-    this._sourceSize = sourceKeys.length;
-
-    for (const key in sourceKeys) {
-      // 判断是否为保护字段
-      judgeReservedKeys(key);
-      this[key] = new DictItem(key, source[key], {
-        ignoreCase: this._options.ignoreCase,
-      });
-      this.dicts.push(this[key] as DictItem);
-    }
+    // 保存声明时的数据
     this._source = source;
+    // 如果传入的数据为对象, 转化为选项
+    if (isObject(source)) {
+      source = transMapToOptions(source);
+    }
+
+    // 获取源数据的长度
+    this._sourceSize = (source as Source).length;
+
+    // 此处item为labelValue
+    for (let item of source as Source) {
+      const { label, value } = item;
+      if (isString(value)) {
+        // 判断是否为保护字段
+        // @ts-ignore
+        judgeReservedKeys(value);
+      }
+      // 判断当前value是否重复
+      judgeRepeatValue(value, this.dicts);
+
+      // 将value: label赋值到this, 使Dict[value]能直接取到label
+      // TODO: 此处未考虑value重复的情况
+      // TODO: 此处number作为key时和string无法区分
+      this[value] = item;
+      // @ts-ignore
+      this.dicts[value] = label;
+      // this[key] = new DictItem(key, source[key], {
+      //   ignoreCase: this._options.ignoreCase,
+      // });
+      // this.dicts.push(this[item.value] as DictItem);
+    }
+    // 保存声明时的转为选项后的数据
+    // this._sourceOptions = source;
+    // 保存声明时的转为对象后的数据
+    // this._sourceObj = source;
 
     // 忽略大小写处理
     if (this._options.ignoreCase) {
       // 获取转为小写的字典数组
+      // TODO: 大小写忽略方法
       this.getLowerCaseDicts = function () {
-        const res: labelValue[] = [];
-        for (const i = 0, len = this.dicts.length; i < len; i++) {
-          const { label, value } = this.dicts[i];
-          res.push({
-            label: label.toLowerCase(),
-            // 此处必为string类型
-            // @ts-ignore
-            value: isString(value) ? value.toLowerCase() : value
-          })
-        }
+        const res: LabelValue[] = [];
+        // for (let i = 0, len = this.dicts.length; i < len; i++) {
+        //   const { label, value } = this.dicts[i];
+        //   res.push({
+        //     label: label.toLowerCase(),
+        //     // 此处必为string类型
+        //     // @ts-ignore
+        //     value: isString(value) ? value.toLowerCase() : value
+        //   })
+        // }
         return res;
       };
     }
@@ -106,9 +127,9 @@ class Dict implements Dict {
   /**
    * @method 获取对应的子项
    * @param  { DictItem | String | Number } key 获取子项的参数
-   * @return { labelValue } 对应的labelValue
+   * @return { LabelValue } 对应的LabelValue
    */
-  getItem(key: string | number): labelValue | null {
+  getItem(key: string | number): LabelValue | null {
     if (key === null || key === undefined) {
       return null;
     }
@@ -129,10 +150,10 @@ class Dict implements Dict {
         key = key.toLowerCase();
       }
 
-      return this[key] as labelValue;
+      return this[key] as LabelValue;
     } else {
+      // 遍历查找
       for (const m in this) {
-        // eslint-disable-next-line no-prototype-builtins
         if (this.hasOwnProperty(m)) {
           if ((this[m] as DictItem).value === key) {
             return this[m] as DictItem;
@@ -173,18 +194,19 @@ class Dict implements Dict {
   }
 
   /**
-   * @method 冻结枚举
+   * @method 冻结字典
    * @param  { Array } dictItem 数组格式的数据源
    * @return { boolean } 判断结果
    */
   freezeDicts() {
-    function deepFreeze(o) {
+    function deepFreeze(o: object) {
       Object.freeze(o);
       for (const propKey in o) {
+        // @ts-ignore
         const prop = o[propKey];
         if (!o.hasOwnProperty(propKey) || !(typeof prop === "object") || Object.isFrozen(prop)) {
           // 跳过原型链上的属性、基本类型和已冻结的对象.
-          continue
+          continue;
         }
         deepFreeze(prop) //递归调用
       }
@@ -200,13 +222,9 @@ class Dict implements Dict {
    * @param  { Array } dictItem 数组格式的数据源
    * @return { boolean } 判断结果
    */
-  // definedHas(dictItem) {
-  //   let condition = (e) => e === dictItem;
-  //   if (isString(dictItem) || isNumber(dictItem)) {
-  //     condition = (e) => e.is(dictItem);
-  //   }
-  //   return this.dicts.some(condition);
-  // }
+  definedHas(dictItem: number | string) {
+    return !!this._sourceOptions.find((i: LabelValue) => i.label === dictItem || i.value === dictItem);
+  }
 
   /**
    * @method 以JSON格式输出
@@ -221,66 +239,64 @@ class Dict implements Dict {
    * @return { string } json字符串
    */
   toString() {
-    return this._dictMap;
+    return JSON.stringify(this._dictMap);
   }
 
   /**
-   * @method 添加枚举子项
-   * @return { object } json对象
+   * @method 获取声明时的数据
+   * @return { string } json字符串
    */
-  add() {
-    // if (map.length) {
-    //   const array = map;
-    //   map = {};
-    //   for (const i = 0; i < array.length; i++) {
-    //     const exponent = this._dictSize + i;
-    //     map[array[i]] = Math.pow(2, exponent);
-    //   }
-    //   for (const member in map) {
-    //     guardReservedKeys(this._options.name, member);
-    //     this[member] = new DictItem(member, map[member], {
-    //       ignoreCase: this._options.ignoreCase,
-    //     });
-    //     this.dicts.push(this[member]);
-    //   }
-    //   for (const key in this._dictMap) {
-    //     map[key] = this._dictMap[key];
-    //   }
-    //   this._dictSize += map.length;
-    //   this._dictMap = map;
-    //   if (this._options.freeze) {
-    //     this.freezeDicts(); // this will make instances of new Dict non-extensible
-    //   }
-    // }
+  getSource() {
+    return this._source;
   }
 
-  // [Symbol.iterator]() {
-  //   let index = 0;
-  //   return {
-  //     next: () =>
-  //       index < this.dicts.length
-  //         ? { done: false, value: this.dicts[index++] }
-  //         : { done: true },
-  //   };
-  // }
+  /**
+   * @method 添加字典子项
+   */
+  set(label: string, value: string | number) {
+    if (this._options.freeze) {
+      throw new Error(`字典声明时为一个冻结对象, 如需要请修改声明时的options.`);
+    }
+    judgeReservedKeys(value as string);
+    // 判断当前value是否重复
+    judgeRepeatValue(value, this.dicts);
+    this[value] = {
+      label,
+      value
+    };
+    // @ts-ignore
+    this.dicts[value] = label;
+    this._size += this._size;
+  }
+
+  /**
+   * @method 删除字典子项
+   */
+  delete(value: string | number) {
+    if (this._options.freeze) {
+      throw new Error(`字典声明时为一个冻结对象, 如需要请修改声明时的options.`);
+    }
+    // @ts-ignore
+    delete this.dicts[value];
+    delete this[value];
+    this._size -= this._size;
+  }
 }
 
 /**
  * @method 转化map为源数据
- * @param  { Array } map 数组格式的数据源
- * @return { Source } 转化后的源数据
+ * @param  { object } map map格式的数据源
+ * @return { Source } 转化后的选项格式
  */
-// TODO: 未实现
-// const transMapToSource = (map: Source): labelValue[] => {
-//   const arr: labelValue[] = [];
-//   map.forEach((el: string, index: number) => {
-//     arr.push({
-//       label: el,
-//       value: Math.pow(2, index),
-//     });
-//   });
-//   return arr;
-// };
+const transMapToOptions = (map: object): LabelValue[] => {
+  return Object.entries(map).reduce((prev: LabelValue[], curr: any[]) => {
+    prev.push({
+      label: curr[1],
+      value: curr[0],
+    });
+    return prev;
+  }, []);
+};
 
 // 保留字段
 const reservedKeys = Object.freeze([
@@ -296,14 +312,20 @@ const reservedKeys = Object.freeze([
 
 // 判断是否为保留字段
 function judgeReservedKeys(key: string) {
-  if (key === "name" || reservedKeys.indexOf(key) >= 0) {
-    throw new Error(`Dict key ${key} is a reserved word!`);
+  if (reservedKeys.indexOf(key) >= 0) {
+    throw new Error(`字典值 ${key} 是一个保留字段.`);
+  }
+}
+
+// 判断是否为重复值
+function judgeRepeatValue(value: any, dicts: object) {
+  if (Object.keys(dicts).findIndex((i: LabelValue) => i === value) >= 0) {
+    throw new Error(`字典值 ${value} 和其他值重复.`);
   }
 }
 
 /**
- * 判断是否为数组
- * @return { boolean } 转化后的源数据
+ * 工具函数合集
  */
 const isType = (type: string, value: any) => typeof value === type;
 const isObject = (value: any) => isType("object", value);
