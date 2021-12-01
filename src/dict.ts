@@ -3,9 +3,10 @@ import { DictItem } from "./dictItem";
 interface Dict {
   size: number; // 字典数量
   dicts: DictItem[];
-  indirection: number; // 间接???
   _options: Option; // 选项
   _source: Source; // 源数据
+  _sourceSize: number; // 源数据
+  getLowerCaseDicts: any;
   [key: string]: DictItem | DictItem[] | Option | Source | number | Function;
 }
 
@@ -25,13 +26,11 @@ interface Option {
   // filter: () => boolean; // 过滤方式
 }
 
-interface Source {
-  [key: string]: labelValue;
-}
+type Source = labelValue[] | string[];
 
 interface labelValue {
   label: string;
-  value: number;
+  value: number | string;
 }
 
 /**
@@ -40,11 +39,9 @@ interface labelValue {
  * @param { Object } options 配置
  */
 class Dict implements Dict {
-  constructor(source: Array<string> | Source, options: Option) {
-    // 数量
+  constructor(source: Source, options: Option) {
+    // TODO: 数量
     this.size = 4;
-    // 间接
-    this.indirection = 1;
 
     // 获取配置信息
     this._options = options || {};
@@ -65,15 +62,16 @@ class Dict implements Dict {
 
     // 如果传入的数据为数组, 转化为源数据
     if (Array.isArray(source)) {
-      source = transMapToSource(source);
+      // source = transMapToSource(source);
     }
 
     const sourceKeys = Object.keys(source);
     // 获取源数据的长度
-    this._dictSize = sourceKeys.length;
+    this._sourceSize = sourceKeys.length;
 
     for (const key in sourceKeys) {
-      guardReservedKeys(key);
+      // 判断是否为保护字段
+      judgeReservedKeys(key);
       this[key] = new DictItem(key, source[key], {
         ignoreCase: this._options.ignoreCase,
       });
@@ -82,23 +80,26 @@ class Dict implements Dict {
     this._source = source;
 
     // 忽略大小写处理
-    // if (this._options.ignoreCase) {
-    //   this.getLowerCaseDicts = function () {
-    //     var res: DictItem[] = {};
-    //     for (var i = 0, len = this.dicts.length; i < len; i++) {
-    //       res[this.dicts[i].key.toLowerCase()] = this.dicts[i];
-    //     }
-    //     return res;
-    //   };
-    // }
+    if (this._options.ignoreCase) {
+      // 获取转为小写的字典数组
+      this.getLowerCaseDicts = function () {
+        const res: labelValue[] = [];
+        for (const i = 0, len = this.dicts.length; i < len; i++) {
+          const { label, value } = this.dicts[i];
+          res.push({
+            label: label.toLowerCase(),
+            // 此处必为string类型
+            // @ts-ignore
+            value: isString(value) ? value.toLowerCase() : value
+          })
+        }
+        return res;
+      };
+    }
 
-    // if (this._options.name) {
-    //   this.name = this._options.name;
-    // }
-
-    // 这会使Dict实例无法拓展
+    // 冻结Dict实例后, 新增删除等方法将不生效
     if (this._options.freeze) {
-      // this.freezeDicts();
+      this.freezeDicts();
     }
   }
 
@@ -113,7 +114,7 @@ class Dict implements Dict {
     }
 
     // if (DictItem.isDictItem(key)) {
-    //   var foundIndex = indexOf.call(this.dicts, key);
+    //   const foundIndex = indexOf.call(this.dicts, key);
     //   if (foundIndex >= 0) {
     //     return key;
     //   }
@@ -122,8 +123,10 @@ class Dict implements Dict {
     if (isString(key)) {
       let dicts = this;
       if (this._options.ignoreCase) {
-        // dicts = this.getLowerCaseDicts();
-        // key = key.toLowerCase();
+        dicts = this.getLowerCaseDicts();
+        // 此处必为string类型
+        // @ts-ignore
+        key = key.toLowerCase();
       }
 
       return this[key] as labelValue;
@@ -147,7 +150,7 @@ class Dict implements Dict {
    * @return { String } 对应的label
    */
   getLabel(key: string | number): String | null {
-    var item = this.getItem(key);
+    const item = this.getItem(key);
     if (item) {
       return item.label;
     }
@@ -160,8 +163,8 @@ class Dict implements Dict {
    * @param  { DictItem | String | Number } key 获取value的参数
    * @return { Number } 对应的value
    */
-  get(key: string | number): Number | null {
-    var item = this.getItem(key);
+  get(key: string | number): string | number | null {
+    const item = this.getItem(key);
     if (item) {
       return item.value;
     }
@@ -170,11 +173,34 @@ class Dict implements Dict {
   }
 
   /**
+   * @method 冻结枚举
+   * @param  { Array } dictItem 数组格式的数据源
+   * @return { boolean } 判断结果
+   */
+  freezeDicts() {
+    function deepFreeze(o) {
+      Object.freeze(o);
+      for (const propKey in o) {
+        const prop = o[propKey];
+        if (!o.hasOwnProperty(propKey) || !(typeof prop === "object") || Object.isFrozen(prop)) {
+          // 跳过原型链上的属性、基本类型和已冻结的对象.
+          continue
+        }
+        deepFreeze(prop) //递归调用
+      }
+    }
+
+    deepFreeze(this);
+
+    return this;
+  }
+
+  /**
    * @method 判断是否为默认值
    * @param  { Array } dictItem 数组格式的数据源
    * @return { boolean } 判断结果
    */
-  // isDefined(dictItem) {
+  // definedHas(dictItem) {
   //   let condition = (e) => e === dictItem;
   //   if (isString(dictItem) || isNumber(dictItem)) {
   //     condition = (e) => e.is(dictItem);
@@ -191,25 +217,33 @@ class Dict implements Dict {
   }
 
   /**
+   * @method 以JSON字符串格式输出
+   * @return { string } json字符串
+   */
+  toString() {
+    return this._dictMap;
+  }
+
+  /**
    * @method 添加枚举子项
    * @return { object } json对象
    */
   add() {
     // if (map.length) {
-    //   var array = map;
+    //   const array = map;
     //   map = {};
-    //   for (var i = 0; i < array.length; i++) {
-    //     var exponent = this._dictSize + i;
+    //   for (const i = 0; i < array.length; i++) {
+    //     const exponent = this._dictSize + i;
     //     map[array[i]] = Math.pow(2, exponent);
     //   }
-    //   for (var member in map) {
+    //   for (const member in map) {
     //     guardReservedKeys(this._options.name, member);
     //     this[member] = new DictItem(member, map[member], {
     //       ignoreCase: this._options.ignoreCase,
     //     });
     //     this.dicts.push(this[member]);
     //   }
-    //   for (var key in this._dictMap) {
+    //   for (const key in this._dictMap) {
     //     map[key] = this._dictMap[key];
     //   }
     //   this._dictSize += map.length;
@@ -236,16 +270,17 @@ class Dict implements Dict {
  * @param  { Array } map 数组格式的数据源
  * @return { Source } 转化后的源数据
  */
-const transMapToSource = (map: Array<string>) => {
-  const obj = {} as Source;
-  map.forEach((el: string, index: number) => {
-    obj[el] = {
-      label: el,
-      value: Math.pow(2, index),
-    };
-  });
-  return obj;
-};
+// TODO: 未实现
+// const transMapToSource = (map: Source): labelValue[] => {
+//   const arr: labelValue[] = [];
+//   map.forEach((el: string, index: number) => {
+//     arr.push({
+//       label: el,
+//       value: Math.pow(2, index),
+//     });
+//   });
+//   return arr;
+// };
 
 // 保留字段
 const reservedKeys = Object.freeze([
@@ -259,8 +294,8 @@ const reservedKeys = Object.freeze([
   "_dictSize",
 ]);
 
-// 保护保留字段
-function guardReservedKeys(key: string) {
+// 判断是否为保留字段
+function judgeReservedKeys(key: string) {
   if (key === "name" || reservedKeys.indexOf(key) >= 0) {
     throw new Error(`Dict key ${key} is a reserved word!`);
   }
