@@ -319,6 +319,7 @@ function judgeReservedKeys(key: string) {
 
 // 判断是否为重复值
 function judgeRepeatValue(value: any, dicts: object) {
+  // @ts-ignore
   if (Object.keys(dicts).findIndex((i: LabelValue) => i === value) >= 0) {
     throw new Error(`字典值 ${value} 和其他值重复.`);
   }
