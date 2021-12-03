@@ -2,14 +2,15 @@ import { DictItem } from "./dictItem";
 
 interface Dict {
   dicts: object;
-  _size: number; // 字典数量
-  // dicts: DictItem[];
   _options: Option; // 字典配置信息
-  _source: Source | object; // 源数据
-  _sourceOptions: Source; // 源数据选项模式
-  _sourceSize: number; // 源数据长度
-  getLowerCaseDicts: Function;
-  [key: string]: DictItem | DictItem[] | Option | Source | number | string | object | Function;
+  _size: number; // 字典数量
+  __SOURCE__: {
+    data: Source | object; // 初始化数据
+    dicts: object; // 源数据字典模式
+    options: Source; // 源数据选项模式
+    size: number; // 源数据长度
+  }; // 源数据
+  [key: string]: | Option | Source | number | string | object | Function;
 }
 
 interface Option {
@@ -42,9 +43,6 @@ interface LabelValue {
  */
 class Dict implements Dict {
   constructor(source: Source | object, options: Option) {
-    // TODO: 数量
-    this._size = 4;
-
     // 获取配置信息
     this._options = options || {};
     this._options.ignoreCase = this._options.ignoreCase || false;
@@ -61,20 +59,23 @@ class Dict implements Dict {
     };
 
     this.dicts = [];
+    // @ts-ignore
+    this.__SOURCE__ = {};
 
     // 保存声明时的数据
-    this._source = source;
+    this.__SOURCE__.data = source;
     // 如果传入的数据为对象, 转化为选项
     if (isObject(source)) {
       source = transMapToOptions(source);
     }
 
-    // 获取源数据的长度
-    this._sourceSize = (source as Source).length;
+    this.__SOURCE__.options = (source as Source);
+    this.__SOURCE__.size = (source as Source).length;
+    this._size = (source as Source).length;
 
     // 此处item为labelValue
     for (let item of source as Source) {
-      const { label, value } = item;
+      let { label, value } = item;
       if (isString(value)) {
         // 判断是否为保护字段
         // @ts-ignore
@@ -82,6 +83,11 @@ class Dict implements Dict {
       }
       // 判断当前value是否重复
       judgeRepeatValue(value, this.dicts);
+
+      // 忽略大小写处理
+      if (this._options.ignoreCase) {
+        value = toLowerCase(value)
+      }
 
       // 将value: label赋值到this, 使Dict[value]能直接取到label
       // TODO: 此处未考虑value重复的情况
@@ -95,16 +101,14 @@ class Dict implements Dict {
       // this.dicts.push(this[item.value] as DictItem);
     }
     // 保存声明时的转为选项后的数据
-    // this._sourceOptions = source;
-    // 保存声明时的转为对象后的数据
-    // this._sourceObj = source;
+    this.__SOURCE__.dicts = (this.dicts);
 
     // 忽略大小写处理
-    if (this._options.ignoreCase) {
-      // 获取转为小写的字典数组
-      // TODO: 大小写忽略方法
-      this.getLowerCaseDicts = function () {
-        const res: LabelValue[] = [];
+    // if (this._options.ignoreCase) {
+    //   // 获取转为小写的字典数组
+    //   // TODO: 大小写忽略方法
+    //   this.getLowerCaseDicts = function () {
+        // const res: LabelValue[] = [];
         // for (let i = 0, len = this.dicts.length; i < len; i++) {
         //   const { label, value } = this.dicts[i];
         //   res.push({
@@ -114,13 +118,13 @@ class Dict implements Dict {
         //     value: isString(value) ? value.toLowerCase() : value
         //   })
         // }
-        return res;
-      };
-    }
+        // return res;
+    //   };
+    // }
 
     // 冻结Dict实例后, 新增删除等方法将不生效
     if (this._options.freeze) {
-      this.freezeDicts();
+      deepFreeze(this);
     }
   }
 
@@ -144,10 +148,10 @@ class Dict implements Dict {
     if (isString(key)) {
       let dicts = this;
       if (this._options.ignoreCase) {
-        dicts = this.getLowerCaseDicts();
+        // dicts = this.getLowerCaseDicts();
         // 此处必为string类型
         // @ts-ignore
-        key = key.toLowerCase();
+        key = toLowerCase(key);
       }
 
       return this[key] as LabelValue;
@@ -180,6 +184,16 @@ class Dict implements Dict {
   }
 
   /**
+   * @method 获取当前值的序号
+   * @param  { DictItem | String | Number } key 获取label的参数
+   * @return { String } 对应的label
+   */
+  getIndex(key: string | number): number {
+    // TODO
+    return -1;
+  }
+
+  /**
    * @method 获取对应的value
    * @param  { DictItem | String | Number } key 获取value的参数
    * @return { Number } 对应的value
@@ -194,27 +208,32 @@ class Dict implements Dict {
   }
 
   /**
-   * @method 冻结字典
-   * @param  { Array } dictItem 数组格式的数据源
+   * @method 获取option格式数据
+   * @param  { number[] | string[] | Function } filter 数组格式的数据源
+   * @param  { number[] | string[] | Function } sort 数组格式的数据源
+   * @return { Source } 选项格式数据
+   */
+  getOptions(filter: number[] | string[] | Function, sort: number[] | string[] | Function) {
+    // TODO
+    return this._options;
+  }
+
+  /**
+   * @method 获取option格式数据
+   * @return { Source } 字典格式数据
+   */
+  getDicts() {
+    return this.dicts;
+  }
+
+  /**
+   * @method 判断是否为默认值
+   * @param  { Array } key 数组格式的数据源
    * @return { boolean } 判断结果
    */
-  freezeDicts() {
-    function deepFreeze(o: object) {
-      Object.freeze(o);
-      for (const propKey in o) {
-        // @ts-ignore
-        const prop = o[propKey];
-        if (!o.hasOwnProperty(propKey) || !(typeof prop === "object") || Object.isFrozen(prop)) {
-          // 跳过原型链上的属性、基本类型和已冻结的对象.
-          continue;
-        }
-        deepFreeze(prop) //递归调用
-      }
-    }
-
-    deepFreeze(this);
-
-    return this;
+  has(key: number | string) {
+    // @ts-ignore
+    return !!this.dicts[key];
   }
 
   /**
@@ -223,7 +242,7 @@ class Dict implements Dict {
    * @return { boolean } 判断结果
    */
   definedHas(dictItem: number | string) {
-    return !!this._sourceOptions.find((i: LabelValue) => i.label === dictItem || i.value === dictItem);
+    return !!this.__SOURCE__.options.find((i: LabelValue) => i.label === dictItem || i.value === dictItem);
   }
 
   /**
@@ -231,7 +250,7 @@ class Dict implements Dict {
    * @return { object } json对象
    */
   toJSON() {
-    return this._dictMap;
+    return this.dicts;
   }
 
   /**
@@ -239,7 +258,7 @@ class Dict implements Dict {
    * @return { string } json字符串
    */
   toString() {
-    return JSON.stringify(this._dictMap);
+    return JSON.stringify(this.dicts);
   }
 
   /**
@@ -247,7 +266,7 @@ class Dict implements Dict {
    * @return { string } json字符串
    */
   getSource() {
-    return this._source;
+    return this.__SOURCE__.data;
   }
 
   /**
@@ -300,14 +319,20 @@ const transMapToOptions = (map: object): LabelValue[] => {
 
 // 保留字段
 const reservedKeys = Object.freeze([
-  "_options",
-  "get",
-  "getKey",
-  "getValue",
   "dicts",
-  "_dictMap",
+  "_options",
+  "_size",
+  "__SOURCE__",
+
+  "getItem",
+  "getLabel",
+  "get",
+  "definedHas",
   "toJSON",
-  "_dictSize",
+  "toString",
+  "getSource",
+  "set",
+  "delete",
 ]);
 
 // 判断是否为保留字段
@@ -323,6 +348,29 @@ function judgeRepeatValue(value: any, dicts: object) {
   if (Object.keys(dicts).findIndex((i: LabelValue) => i === value) >= 0) {
     throw new Error(`字典值 ${value} 和其他值重复.`);
   }
+}
+
+/**
+ * @method 递归冻结
+ * @param  { object } o 需要冻结的对象
+ */
+function deepFreeze(o: object) {
+  Object.freeze(o);
+  for (const propKey in o) {
+    // @ts-ignore
+    const prop = o[propKey];
+    if (!o.hasOwnProperty(propKey) || !(typeof prop === "object") || Object.isFrozen(prop)) {
+      // 跳过原型链上的属性、基本类型和已冻结的对象.
+      continue;
+    }
+    deepFreeze(prop) //递归调用
+  }
+}
+
+// 将value转为小写
+function toLowerCase(value: number | string): string {
+  if (isNumber(value)) value = value.toString();
+  return (value as string).toLowerCase();
 }
 
 /**
