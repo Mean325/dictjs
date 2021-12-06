@@ -42,39 +42,39 @@ interface LabelValue {
  * @param { Object } options 配置
  */
 class Dict implements Dict {
-  constructor(source: Source | object, options: Option) {
+  constructor(data: Source | object, options: Option) {
     // 获取配置信息
-    this._options = options || {};
-    this._options.ignoreCase = this._options.ignoreCase || false;
-    this._options.freeze = this._options.freeze || true;
-    this._options.strict = this._options.strict || true;
-    // this._options.filter = this._options.filter || null;
-    this._options.input = this._options.input || {
-      label: "label",
-      value: "value",
-    };
-    this._options.output = this._options.output || {
-      label: "label",
-      value: "value",
-    };
+    const {
+      ignoreCase = false,
+      freeze = true,
+      strict = true,
+      input = {
+        label: "label",
+        value: "value",
+      },
+      output = {
+        label: "label",
+        value: "value",
+      },
+    } = options || {};
+    this._options = { ignoreCase, freeze, strict, input, output };
 
     this.dicts = [];
     // @ts-ignore
     this.__SOURCE__ = {};
 
     // 保存声明时的数据
-    this.__SOURCE__.data = source;
+    this.__SOURCE__.data = data;
+    // TODO: 此处需要根据input取相应的值
     // 如果传入的数据为对象, 转化为选项
-    if (isObject(source)) {
-      source = transMapToOptions(source);
-    }
+    const source = isObject(data) ? transMapToOptions(data) : data as Source;
 
-    this.__SOURCE__.options = (source as Source);
-    this.__SOURCE__.size = (source as Source).length;
-    this._size = (source as Source).length;
+    this.__SOURCE__.options = source;
+    this.__SOURCE__.size = source.length;
+    this._size = source.length;
 
     // 此处item为labelValue
-    for (let item of source as Source) {
+    for (let item of source) {
       let { label, value } = item;
       if (isString(value)) {
         // 判断是否为保护字段
@@ -214,6 +214,7 @@ class Dict implements Dict {
    * @return { Source } 选项格式数据
    */
   getOptions(filter: number[] | string[] | Function, sort: number[] | string[] | Function) {
+    // TODO: 此处需要根据output取相应的值
     // TODO
     return this._options;
   }
